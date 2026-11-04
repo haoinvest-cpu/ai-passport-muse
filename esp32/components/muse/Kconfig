@@ -1,0 +1,200 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+menu "Muse"
+
+    choice MUSE_BOARD
+        prompt "Board with the full UI"
+        default MUSE_BOARD_NONE
+        help
+            The UI is the voice companion on boards with a screen: an
+            animated avatar, push-to-talk chat, settings, and battery
+            handling. It runs beside Home Link, which owns Wi-Fi, BLE
+            pairing, credentials and OTA. Pick the board it runs on, or none
+            for a Link without a display.
+
+        config MUSE_BOARD_NONE
+            bool "None (Home Link without a display)"
+
+        config MUSE_BOARD_WAVESHARE_S3_175C
+            bool "Waveshare ESP32-S3-Touch-AMOLED-1.75C"
+            depends on IDF_TARGET_ESP32S3
+
+        config MUSE_BOARD_WAVESHARE_S3_175
+            bool "Waveshare ESP32-S3-Touch-AMOLED-1.75 (not the 1.75C)"
+            depends on IDF_TARGET_ESP32S3
+
+        config MUSE_BOARD_AIPI
+            bool "AIPI Lite (ESP32-S3, two buttons, no touch)"
+            depends on IDF_TARGET_ESP32S3
+
+        config MUSE_BOARD_ESPRESSIF_BOX_3
+            bool "Espressif ESP32-S3-BOX-3 (320x240 touch LCD, speaker and microphones)"
+            depends on IDF_TARGET_ESP32S3
+
+        config MUSE_BOARD_WAVESHARE_C6_18
+            bool "Waveshare ESP32-C6-Touch-AMOLED-1.8"
+            depends on IDF_TARGET_ESP32C6
+
+        config MUSE_BOARD_SENSECAP_WATCHER
+            bool "Seeed SenseCAP Watcher (ESP32-S3, round touch LCD, wheel)"
+            depends on IDF_TARGET_ESP32S3
+
+        config MUSE_BOARD_M5STACK_CARDPUTER_ADV
+            bool "M5Stack Cardputer ADV (ESP32-S3, keyboard, no PSRAM)"
+            depends on IDF_TARGET_ESP32S3
+
+        config MUSE_BOARD_M5STACK_STICKS3
+            bool "M5Stack StickS3 (ESP32-S3, two buttons, no touch)"
+            depends on IDF_TARGET_ESP32S3
+
+        config MUSE_BOARD_M5STACK_STICKC_PLUS2
+            bool "M5Stack StickC Plus2 (ESP32, two buttons, no touch)"
+            depends on IDF_TARGET_ESP32
+
+        config MUSE_BOARD_M5STACK_STOPWATCH
+            bool "M5Stack StopWatch (ESP32-S3, round touch AMOLED)"
+            depends on IDF_TARGET_ESP32S3
+
+        config MUSE_BOARD_PASSPORT
+            bool "FoloToy AI Passport (ESP32-C3, 240x320, no PSRAM)"
+            depends on IDF_TARGET_ESP32C3
+    endchoice
+
+    config MUSE_ENABLED
+        bool
+        default y if !MUSE_BOARD_NONE
+
+    # Always defined, unlike the target-dependent board options, so
+    # idf_component.yml rules can select each board's managed components.
+    config MUSE_BOARD_ID
+        string
+        default "waveshare_s3_175c" if MUSE_BOARD_WAVESHARE_S3_175C
+        default "waveshare_s3_175" if MUSE_BOARD_WAVESHARE_S3_175
+        default "aipi" if MUSE_BOARD_AIPI
+        default "espressif_box_3" if MUSE_BOARD_ESPRESSIF_BOX_3
+        default "waveshare_c6_18" if MUSE_BOARD_WAVESHARE_C6_18
+        default "sensecap_watcher" if MUSE_BOARD_SENSECAP_WATCHER
+        default "m5stack_sticks3" if MUSE_BOARD_M5STACK_STICKS3
+        default "m5stack_stickc_plus2" if MUSE_BOARD_M5STACK_STICKC_PLUS2
+        default "m5stack_cardputer_adv" if MUSE_BOARD_M5STACK_CARDPUTER_ADV
+        default "m5stack_stopwatch" if MUSE_BOARD_M5STACK_STOPWATCH
+        default "passport" if MUSE_BOARD_PASSPORT
+        default "none"
+
+    # The Muse tools' serial port: the console UART behind the board's USB
+    # bridge, where the chip's own USB Serial/JTAG isn't wired to a connector
+    # (the Watcher's USB-C goes to a CH342) or the chip has none.
+    config MUSE_CONSOLE_UART
+        bool
+        default y if MUSE_BOARD_SENSECAP_WATCHER || !SOC_USB_SERIAL_JTAG_SUPPORTED
+
+    config MUSE_WATCHER_CAMERA
+        bool "SenseCAP Watcher camera capture and live preview"
+        depends on MUSE_BOARD_SENSECAP_WATCHER && SPIRAM
+        default n
+        help
+            Enable the camera.capture Home Link command and the wheel
+            double-click camera preview. Camera buffers and tasks consume
+            memory and preview decoding shares CPU time with voice and Link.
+            Leave disabled to build without camera support.
+
+    config MUSE_HATCH
+        bool "Muse's own voice session"
+        depends on MUSE_ENABLED
+        default y if SPIRAM
+        default n
+        help
+            Push-to-talk turns go over a voice session of Muse's own, to the
+            VM Home Link is paired with or one set up on the device with a
+            device token. Replies are text, shown as captions; start_tts in
+            muse_chat_session.cpp is where a TTS API of your own can speak
+            them. Needs PSRAM. Without it, voice notes go over Home Link's own
+            session to its paired VM and replies are shown as text.
+
+    # Voice replies on the Passport. The device POSTs the reply text to this
+    # URL and plays the 16 kHz mono s16le PCM that comes back. Run
+    # server/muse-tts-server.py on a machine in the same LAN and put its
+    # address here. The default is an example, not a working host.
+    config MUSE_TTS_PCM_URL
+        string "TTS PCM endpoint URL"
+        depends on MUSE_BOARD_PASSPORT
+        default "http://192.168.1.10:8020/tts-pcm"
+        help
+            Full URL of the /tts-pcm endpoint of the LAN TTS server. The
+            service synthesises speech with Edge TTS and converts it to
+            16 kHz mono signed 16-bit little-endian PCM, so the C3 never
+            decodes MP3 itself. The server must be reachable from the
+            board's Wi-Fi network.
+
+    config MUSE_PASSPORT_HEAP_LOG
+        bool "Log Passport internal heap every 5 seconds"
+        depends on MUSE_BOARD_PASSPORT
+        default y
+        help
+            A low-priority task prints internal-heap free, minimum-ever and
+            largest free block. Depends on the Passport board, so other
+            boards, including the M5 ones, leave it off. Turn it off once
+            the memory budget is known.
+
+    # Debug only. Default off, so a normal Passport build still starts BLE
+    # while unpaired. Turn on to measure the UI and audio heap without the
+    # controller; the device cannot be discovered until it is off again.
+    config MUSE_PASSPORT_SKIP_BLE
+        bool "Passport: do not start BLE (heap measurement)"
+        depends on MUSE_BOARD_PASSPORT
+        default n
+        help
+            Skip ble_server_start on this board. Pairing needs the radio, so
+            leave this off for a device someone will pair. Other boards do
+            not see this option.
+
+    # Debug only. Default off. The serial command is compiled in, but nothing
+    # calls it during boot or pairing. Enable from the gitignored
+    # sdkconfig.local when repeating the XMC flash-suspend check.
+    config MUSE_PASSPORT_NVS_STRESS
+        bool "Passport: serial >nvstest flash stress hook"
+        depends on MUSE_BOARD_PASSPORT
+        default n
+        help
+            Compiles >nvstest. Typing it writes and commits an NVS blob 200
+            times in a spare namespace, then erases that namespace. It does
+            not run at boot and does not touch pairing keys. Leave it off in
+            firmware someone will pair.
+
+    # Debug only. Default off. >snap is always recognized. The pixel dump is
+    # compiled in only while this is y. Enable it from the gitignored
+    # sdkconfig.local when a host has to reconstruct one panel frame.
+    config MUSE_PASSPORT_FLUSH_CAPTURE
+        bool "Passport: serial >snap flush capture"
+        depends on MUSE_BOARD_PASSPORT
+        default n
+        help
+            After the rounded-corner mask, print each partial draw buffer
+            that is handed to the panel. >snap invalidates the screen once.
+            With this off the command prints @snap off and the dump is not
+            in the binary. Leave it off on firmware someone will pair.
+
+    config MUSE_CJK_FONT
+        bool "Chinese subset font for Passport reply text"
+        depends on MUSE_BOARD_PASSPORT
+        default n
+        help
+            Reply and caption labels use a flash-resident Noto Sans SC
+            subset (GB2312 level 1, its punctuation and fullwidth rows, and
+            printable ASCII). The glyphs are const data in flash, not a RAM
+            cache. Other boards cannot select this, so their firmware stays
+            without the font. The Passport overlay turns it on.
+
+endmenu
